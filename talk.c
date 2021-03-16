@@ -52,9 +52,7 @@ void *receiving(void *ptr) // server
 
     len = sizeof(cliaddr); //len is value/resuslt
 
-    while (n = recv(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL) == 0)
-
-    {
+    while (n = recv(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL) == 0){
         buffer[n] = '\0';
         printf("Client : %s\n", buffer);
     }
