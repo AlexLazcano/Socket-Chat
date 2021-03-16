@@ -13,6 +13,18 @@
 
 #define MAXLINE 1024
 
+void *input(void *ptr)
+{
+    printf("Input thread for keybaord\n");
+    char lineBuffer[4000] = {};
+
+    while (strcmp(fgets(lineBuffer, 4000, stdin), "quit\n")  != 0)
+    {
+
+        printf("string size: %ld string: %s", strlen(lineBuffer), lineBuffer);
+    }
+}
+
 void *receiving(void *ptr) // server
 {
     printf("Reveive thread %d \n", *(int *)ptr);
@@ -52,12 +64,11 @@ void *receiving(void *ptr) // server
 
     len = sizeof(cliaddr); //len is value/resuslt
 
-    while (n = recv(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL) == 0){
+    while (n = recv(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL) == 0)
+    {
         buffer[n] = '\0';
         printf("Client : %s\n", buffer);
     }
-
-    
 
     return 0;
 }
@@ -96,8 +107,14 @@ void *sending(void *ptr) // client
 
 int main(int argc, char const *argv[])
 {
-    pthread_t sender, recieve, p3, p4;
+    pthread_t sender, recieve, keyboard, p4;
     int arg1, arg2, arg3, arg4;
+
+    if (argc < 2)
+    {
+        printf("Error, no sockets given\n");
+        exit(-1);
+    }
 
     arg1 = atoi(argv[1]);
     arg2 = atoi(argv[2]);
@@ -105,6 +122,11 @@ int main(int argc, char const *argv[])
     printf("Server Port: %d\n", arg1); // server will recieve
     printf("Client Port: %d\n", arg2); // client will send
     List *list1 = List_create();
+
+    if (pthread_create(&keyboard, NULL, input, (void *)&arg3) == 0)
+    {
+        printf("Created keyboard thread\n");
+    }
 
     if (pthread_create(&sender, NULL, sending, (void *)&arg1) == 0)
     {
@@ -116,11 +138,9 @@ int main(int argc, char const *argv[])
         printf("Created reveive thread\n");
     }
 
-    List_append(list1, &sender);
-
     pthread_join(sender, NULL);
     pthread_join(recieve, NULL);
-    
+    pthread_join(keyboard, NULL);
 
     return 0;
 }
