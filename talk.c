@@ -137,19 +137,19 @@ int main(int argc, char const *argv[])
         printf("Created keyboard thread\n");
     }
 
-    // if (pthread_create(&sender, NULL, sending, (void *)&arg1) == 0)
-    // {
-    //     printf("Created sender thread\n");
-    // }
+    if (pthread_create(&sender, NULL, sending, (void *)&arg1) == 0)
+    {
+        printf("Created sender thread\n");
+    }
 
-    // if (pthread_create(&recieve, NULL, receiving, (void *)&arg2) == 0)
-    // {
-    //     printf("Created reveive thread\n");
-    // }
+    if (pthread_create(&recieve, NULL, receiving, (void *)&arg2) == 0)
+    {
+        printf("Created reveive thread\n");
+    }
 
-    // pthread_join(sender, NULL);
-    // pthread_join(recieve, NULL);
     pthread_join(keyboard, NULL);
+    pthread_join(sender, NULL);
+    pthread_join(recieve, NULL);
 
     return 0;
 }
