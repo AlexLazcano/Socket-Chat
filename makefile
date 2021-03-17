@@ -1,7 +1,7 @@
 CFLAGS = -pthread -o talk
 
 default: talk 
-	gcc -g -o talk talk.c list.c -pthread
+	gcc -g -o talk talk.c list.c -pthread 
 
 
 talk: talk.o list.o
