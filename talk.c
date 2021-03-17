@@ -16,8 +16,10 @@
 #define MAXLINE 1024
 
 sem_t mutexSend;
+sem_t mutexRec;
 List *keyList;
-char MESSAGE[40];
+char MESSAGE_OUT[40];
+char MESSAGE_IN[40];
 
 void *input(void *ptr)
 {
@@ -26,16 +28,16 @@ void *input(void *ptr)
     // printf("%d\n", List_count(keyboardList));
 
     char *lineBuffer = malloc(sizeof(char) * 40);
-    printf("LOCKING at INPUT\n");
+    // printf("LOCKING at INPUT\n");
     printf("Input: ");
     while (sem_wait(&mutexSend) == 0 && strcmp(fgets(lineBuffer, 40, stdin), "quit\n") != 0)
     {
 
-        printf("LOCKED at INPUT\n");
+        // printf("LOCKED at INPUT\n");
 
-        strcpy(MESSAGE, lineBuffer);
+        strcpy(MESSAGE_OUT, lineBuffer);
 
-        printf("UNLOCKED at INPUT\n");
+        // printf("UNLOCKED at INPUT\n");
         //release resources
         sem_post(&mutexSend);
         sleep(1);
@@ -46,7 +48,8 @@ void *input(void *ptr)
 
 void *sending(void *ptr) // client
 {
-
+    sleep(2);
+    
     // printf("Sending thread started\n");
 
     int PORT = *(int *)ptr;
@@ -71,17 +74,17 @@ void *sending(void *ptr) // client
 
     //server settings are done.
 
-    printf("LOCKING in SEND\n");
+    // printf("LOCKING in SEND\n");
 
-    while (sem_wait(&mutexSend) == 0 && strcmp(MESSAGE, "quit\n") != 0)
+    while (sem_wait(&mutexSend) == 0 && strcmp(MESSAGE_OUT, "quit\n") != 0)
     {
         //waiting to send
-        
-        printf("LOCKED in SEND\n");
-        //message = List_remove(keyList);
-        printf("Message to be sent: %s", MESSAGE);
 
-        printf("UNLOCKED in SEND \n");
+        // printf("LOCKED in SEND\n");
+        //message = List_remove(keyList);
+        printf("Message to be sent: %s", MESSAGE_OUT);
+
+        // printf("UNLOCKED in SEND \n");
         sem_post(&mutexSend);
         sleep(2);
         // realesed the resource
@@ -91,13 +94,22 @@ void *sending(void *ptr) // client
     return 0;
 }
 
+void *printing(void *from){
+
+    while (strcmp(MESSAGE_IN, "quit\n") != 0 && strcmp(MESSAGE_IN, "") != 0)
+    {
+        printf("%s: %s", (char*)from, MESSAGE_IN);
+    }
+    
+}
+
 void *receiving(void *ptr) // server
 {
-    //printf("Receive thread %d \n", *(int *)ptr);
+    // printf("Receive thread %d \n", *(int *)ptr);
     int PORT = *(int *)ptr;
     int sockfd;
     char buffer[MAXLINE];
-    char *hello = "Hello from server";
+    
     struct sockaddr_in servaddr, cliaddr;
 
     // Creating socket file descriptor
@@ -123,17 +135,21 @@ void *receiving(void *ptr) // server
     }
     else
     {
-        // printf("Binded Succesfully\n");
+        printf("Binded Succesfully\n");
     }
 
+    
     int len, n;
 
     len = sizeof(cliaddr); //len is value/resuslt
-
-    while (n = recv(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL) == 0)
+    
+    printf("Listening.. \n");
+    while (n = recv(sockfd, (char *)buffer, MAXLINE, 0) == 0)
     {
+        printf("Receiving message\n");
         buffer[n] = '\0';
         printf("Client : %s\n", buffer);
+        
     }
 
     return 0;
@@ -142,6 +158,7 @@ void *receiving(void *ptr) // server
 int main(int argc, char const *argv[])
 {
     sem_init(&mutexSend, 0, 1);
+    sem_init(&mutexRec, 0, 1);
     pthread_t sender, recieve, keyboard, p4;
     int arg1, arg2, arg3, arg4;
 
@@ -153,12 +170,11 @@ int main(int argc, char const *argv[])
         exit(-1);
     }
 
-    // arg1 = atoi(argv[1]);
-    // arg2 = atoi(argv[2]);
+    
+    arg1 = atoi(argv[1]);
+    arg2 = atoi(argv[2]);
 
-    // List_add(keyList, &arg1);
-    // int *num = List_curr(keyList);
-    // printf("%d\n", *num);
+    
 
     // printf("Server Port: %d\n", arg1); // server will recieve
     //printf("Client Port: %d\n", arg2); // client will send
@@ -170,10 +186,9 @@ int main(int argc, char const *argv[])
 
     if (pthread_create(&recieve, NULL, receiving, (void *)&arg2) == 0)
     {
-        // printf("Created reveive thread\n");
+         printf("Created receive thread\n");
     }
-    sleep(2);
-    printf("sleep done");
+    
     if (pthread_create(&sender, NULL, sending, (void *)&arg1) == 0)
     {
         // printf("Created sender thread\n");
@@ -184,11 +199,7 @@ int main(int argc, char const *argv[])
     pthread_join(recieve, NULL);
 
     sem_destroy(&mutexSend);
-
-    while (List_count(keyList) > 0)
-    {
-        List_trim(keyList);
-    }
+    sem_destroy(&mutexRec);
 
     return 0;
 }
