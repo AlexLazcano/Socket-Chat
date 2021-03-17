@@ -46,13 +46,13 @@ void *input(void *ptr)
     free(lineBuffer);
 }
 
-void *sending(void *ptr) // client
+void *sending(void *ClientPort) // client
 {
     sleep(2);
-    
     // printf("Sending thread started\n");
 
-    int PORT = *(int *)ptr;
+    int PORT = *(int *)ClientPort;
+    printf("Sending to: %d\n",PORT );
     int sockfd;
     char buffer[MAXLINE];
     char *message = "Test message\n";
@@ -82,7 +82,9 @@ void *sending(void *ptr) // client
 
         // printf("LOCKED in SEND\n");
         //message = List_remove(keyList);
-        printf("Message to be sent: %s", MESSAGE_OUT);
+
+        sendto(sockfd, (const char *)message, strlen(message), MSG_CONFIRM, (const struct sockaddr* ) &servaddr, sizeof(servaddr));
+        printf("Message to be sent: %s", message);
 
         // printf("UNLOCKED in SEND \n");
         sem_post(&mutexSend);
@@ -103,10 +105,10 @@ void *printing(void *from){
     
 }
 
-void *receiving(void *ptr) // server
+void *receiving(void *ServerPort) // server
 {
-    // printf("Receive thread %d \n", *(int *)ptr);
-    int PORT = *(int *)ptr;
+    int PORT = *(int *)ServerPort;
+    printf("Receive thread %d \n", PORT);
     int sockfd;
     char buffer[MAXLINE];
     
@@ -140,17 +142,21 @@ void *receiving(void *ptr) // server
 
     
     int len, n;
-
-    len = sizeof(cliaddr); //len is value/resuslt
-    
+    len = sizeof(cliaddr);
     printf("Listening.. \n");
-    while (n = recv(sockfd, (char *)buffer, MAXLINE, 0) == 0)
-    {
-        printf("Receiving message\n");
-        buffer[n] = '\0';
-        printf("Client : %s\n", buffer);
+    n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (struct sockaddr*) &cliaddr, &len);
+    printf("Message received..\n");
+    buffer[n] = '\0';
+    printf("client: %s\n", buffer);
+    
+    // printf("Listening.. \n");
+    // while (n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (const struct sockaddr* ) &servaddr, &len) == 0)
+    // {
+    //     printf("Receiving message\n");
+    //     buffer[n] = '\0';
+    //     printf("Client : %s\n", buffer);
         
-    }
+    // }
 
     return 0;
 }
@@ -173,7 +179,7 @@ int main(int argc, char const *argv[])
     
     arg1 = atoi(argv[1]);
     arg2 = atoi(argv[2]);
-
+    
     
 
     // printf("Server Port: %d\n", arg1); // server will recieve
@@ -184,12 +190,12 @@ int main(int argc, char const *argv[])
         // printf("Created keyboard thread\n");
     }
 
-    if (pthread_create(&recieve, NULL, receiving, (void *)&arg2) == 0)
+    if (pthread_create(&recieve, NULL, receiving, (void *)&arg1) == 0)
     {
          printf("Created receive thread\n");
     }
     
-    if (pthread_create(&sender, NULL, sending, (void *)&arg1) == 0)
+    if (pthread_create(&sender, NULL, sending, (void *)&arg2) == 0)
     {
         // printf("Created sender thread\n");
     }
