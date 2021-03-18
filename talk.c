@@ -17,10 +17,12 @@
 
 sem_t mutexSend;
 sem_t mutexRec;
-List *keyList;
+const char *machine;
+
 List *IncommingMSGs;
 char MESSAGE_OUT[MAXLINE];
 char MESSAGE_IN[MAXLINE];
+int EXITCODE = 0;
 
 void *input(void *ptr)
 {
@@ -31,11 +33,11 @@ void *input(void *ptr)
     char *lineBuffer = malloc(sizeof(char) * MAXLINE);
     // printf("LOCKING at INPUT\n");
 
-    while (sem_wait(&mutexSend) == 0 && strcmp(fgets(lineBuffer, MAXLINE, stdin), "quit\n") != 0)
+    while (sem_wait(&mutexSend) == 0 && strcmp(fgets(lineBuffer, MAXLINE, stdin), "!exit\n") != 0)
     {
 
         // printf("LOCKED at INPUT\n");
-
+        // printf("%s", lineBuffer);
         strcpy(MESSAGE_OUT, lineBuffer);
 
         // printf("UNLOCKED at INPUT\n");
@@ -43,13 +45,15 @@ void *input(void *ptr)
         sem_post(&mutexSend);
         sleep(1);
     }
+
+    printf("exit input");
     free(lineBuffer);
 }
 
 void *sending(void *ClientPort) // client
 {
 
-    // printf("Sending thread started\n");
+    printf("Sending thread started\n");
 
     int PORT = *(int *)ClientPort;
     // printf("Sending to: %d\n",PORT );
@@ -70,18 +74,15 @@ void *sending(void *ClientPort) // client
     // Filling server information
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(PORT);
-    servaddr.sin_addr.s_addr = INADDR_ANY;
+    servaddr.sin_addr.s_addr = inet_addr(machine);
 
     //server settings are done.
     sleep(2);
     // printf("LOCKING in SEND\n");
 
-    while (sem_wait(&mutexSend) == 0 && strcmp(MESSAGE_OUT, "quit\n") != 0)
+    while (EXITCODE != 1 && sem_wait(&mutexSend) == 0)
     {
         //waiting to send
-
-        // printf("LOCKED in SEND\n");
-        //message = List_remove(keyList);
 
         // printf("Message to be sent: %s", MESSAGE_OUT);
         sendto(sockfd, (const char *)MESSAGE_OUT, strlen(MESSAGE_OUT), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
@@ -120,19 +121,19 @@ void *printing(void *recList)
     // sem_getvalue(&mutexRec, &val);
     // printf("sem value: %d\n", val);
     // printf("WANT LOCK AT PRINT\n");
-    while (sem_wait(&mutexRec) == 0)
+    while (EXITCODE != 1 && sem_wait(&mutexRec) == 0)
     {
         // printf("LOCKED AT PRINT\n");
 
         ////////////////////// crit
 
         char *ptr;
-        char* word;
+        char *word;
         List_first(IncommingMSGs);
-        ptr = List_remove(IncommingMSGs);
+        ptr = List_remove(IncommingMSGs); // valgrind ?
         List_last(IncommingMSGs);
 
-        memcpy(word, ptr, MAXLINE);
+        memccpy(word, ptr, '\0', MAXLINE);
         printf("client: %s\n", word);
         free(ptr);
 
@@ -190,23 +191,20 @@ void *receiving(void *ServerPort) // server
     }
     else
     {
-        printf("Binded Succesfully\n");
+        // printf("Binded Succesfully\n");
     }
     //finished socket set up
 
     int len, n;
     len = sizeof(cliaddr);
-    printf("Listening.. \n");
+    // printf("Listening.. \n");
     // n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (struct sockaddr*) &cliaddr, &len);
     // printf("Message received..\n");
     // buffer[n] = '\0';
     // printf("client: %s\n", buffer);
-    int val;
-    sem_getvalue(&mutexRec, &val);
-    printf("sem value: %d\n", val);
 
-    printf("WANT LOCK AT Rec\n");
-    while (sem_wait(&mutexRec) == 0)
+    // printf("WANT LOCK AT Rec\n");
+    while (EXITCODE != 1 && sem_wait(&mutexRec) == 0)
     {
 
         // printf("LOCKED at Rec\n");
@@ -214,21 +212,15 @@ void *receiving(void *ServerPort) // server
         n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&cliaddr, &len);
         // printf("Receiving message\n");
         buffer[n] = '\0';
-        buffer[n-1] = '\0';
+        buffer[n - 1] = '\0';
 
         storeMsg(buffer);
         // printf("UNLOCKING at REC\n");
 
         // printf("UNLOCKED at REC\n");
         sem_post(&mutexRec);
-        
 
         sleep(2);
-
-        if (strcmp(buffer, "quit") == 0)
-        {
-            break;
-        }
     }
     printf("Exiting listener\n");
 
@@ -243,16 +235,24 @@ int main(int argc, char const *argv[])
     int myPort, theirPort, arg3, arg4;
 
     IncommingMSGs = List_create();
-    keyList = List_create();
 
-    if (argc < 2)
+    if (argc < 3)
     {
         printf("Error, no sockets given\n");
         exit(-1);
     }
 
     myPort = atoi(argv[1]);
-    theirPort = atoi(argv[2]);
+    if (strcmp("localhost", argv[2]) == 0)
+    {
+        machine = "127.0.0.1";
+    }
+    else
+    {
+        machine = argv[2];
+    }
+
+    theirPort = atoi(argv[3]);
 
     // printf("Server Port: %d\n", arg1); // server will recieve
     //printf("Client Port: %d\n", arg2); // client will send
@@ -283,6 +283,6 @@ int main(int argc, char const *argv[])
 
     sem_destroy(&mutexSend);
     sem_destroy(&mutexRec);
-
+    printf("Exit");
     return 0;
 }
