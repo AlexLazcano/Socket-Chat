@@ -8,17 +8,19 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <signal.h>
 
 #include <semaphore.h>
 
 #include "list.h"
 
-#define MAXLINE 40
+#define MAXLINE 4000
+#define KeyNUM 20
 int status = false; // 0 = offline, 1 = online
 
 sem_t mutexSend;
 sem_t mutexRec;
-
+pthread_t sender, receive, keyboard, printer;
 const char *machine;
 
 List *IncommingMSGs;
@@ -28,6 +30,20 @@ char MESSAGE_IN[MAXLINE];
 int EXITCODE = false;
 char *ONLINE = "11-11\n";
 char *OFFLINE = "10-10\n";
+
+void cancelAllThread()
+{
+
+    pthread_cancel(printer);
+    printf("cancelled printer\n");
+
+    printf("cancelled sender\n");
+    pthread_cancel(sender);
+    printf("cancelled keyboard\n");
+    pthread_cancel(keyboard);
+    printf("cancelled receive\n");
+    pthread_cancel(receive);
+}
 
 int isCode(char *string)
 {
@@ -53,7 +69,7 @@ char *encrypt(char *message)
 
     char *newstring = malloc(strlen(message));
 
-    int key = 20;
+    int key = KeyNUM;
     // printf("Before: %s\n", message);
 
     for (int i = 0; i < strlen(message); i++)
@@ -71,7 +87,7 @@ char *decrypt(char *message)
 {
     char *newstring = malloc(strlen(message));
 
-    int key = 256 - 20;
+    int key = 256 - KeyNUM;
 
     for (int i = 0; i < strlen(message); i++)
     {
@@ -87,19 +103,31 @@ void *input(void *ptr)
 {
 
     // printf("Input Thread started\n");
-    // printf("%d\n", List_count(keyboardList));
 
     char *lineBuffer = malloc(sizeof(char) * MAXLINE);
     // printf("LOCKING at INPUT\n");
 
-    while (sem_wait(&mutexSend) == 0 && fgets(lineBuffer, MAXLINE, stdin))
+    while (EXITCODE == false && sem_wait(&mutexSend) == 0)
     {
         // printf("LOCKED at INPUT\n");
+        if (fgets(lineBuffer, MAXLINE, stdin) != NULL)
+        {
+
+            // printf("Got line\n");
+        }
+
+        if (EXITCODE == true)
+        {
+            free(lineBuffer);
+            break;
+        }
+
         // printf("%s", lineBuffer);
         if (strcmp(lineBuffer, "!exit\n") == 0)
         {
+            printf("Pressed exit\n");
             EXITCODE = true;
-            sem_post(&mutexSend);
+
             break;
         }
 
@@ -127,9 +155,10 @@ void *input(void *ptr)
         sleep(1);
     }
 
-    printf("exiting input\n");
+    // printf("exiting input\n");
+    sem_post(&mutexSend);
 
-    free(lineBuffer);
+    return 0;
 }
 
 void *sending(void *ClientPort) // client
@@ -162,12 +191,14 @@ void *sending(void *ClientPort) // client
     sleep(2);
 
     sendto(sockfd, (const char *)ONLINE, strlen(ONLINE), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
-    while (EXITCODE != true && sem_wait(&mutexSend) == 0)
+    while (EXITCODE == false && sem_wait(&mutexSend) == 0)
     {
         // printf("LOCKED at SEND\n");
-        //waiting to send
-
         // printf("Message to be sent: %s", MESSAGE_OUT);
+        if (EXITCODE == true)
+        {
+            break;
+        }
 
         if (strcmp(MESSAGE_OUT, "") != 0)
         {
@@ -183,8 +214,9 @@ void *sending(void *ClientPort) // client
         // realesed the resource
     }
 
-    printf("Exiting Sending\n");
+    // printf("Exiting Sending and sent exit\n");
     sendto(sockfd, (const char *)OFFLINE, strlen(OFFLINE), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+    // sleep(40);
 
     close(sockfd);
     return 0;
@@ -210,15 +242,14 @@ void *printing(void *recList)
 {
     sleep(2);
 
-    // int val;
-    // sem_getvalue(&mutexRec, &val);
-    // printf("sem value: %d\n", val);
-    // printf("WANT LOCK AT PRINT\n");
     while (EXITCODE != true && sem_wait(&mutexRec) == 0)
     {
         // printf("LOCKED AT PRINT\n");
-
-        ////////////////////// crit
+        if (EXITCODE == true)
+        {
+            printf("Found exit code\n");
+            break;
+        }
 
         char *ptr;
         char *word;
@@ -227,23 +258,25 @@ void *printing(void *recList)
             // printf("count: |%d|\n", List_count(IncommingMSGs));
             List_first(IncommingMSGs);
             ptr = List_remove(IncommingMSGs); // valgrind ?
+
             List_last(IncommingMSGs);
             // printf("Pointer: |%s|\n", ptr);
-            memccpy(word, ptr, '\0', MAXLINE);
-            printf("client: %s\n", word);
+            // memccpy(word, ptr, '\0', MAXLINE);
+            printf(" %s\n", ptr);
 
             free(ptr);
         }
-        fflush(stdout);
 
-        ////////////////////
         // printf("UNLOCKED AT PRINT\n");
 
         sem_post(&mutexRec);
         sleep(2);
     }
     sem_post(&mutexRec);
-    printf("Exiting Printing\n");
+    // printf("Exiting Printing\n");
+    // sleep(40);
+
+    return 0;
 }
 
 void storeMsg(char *string)
@@ -300,7 +333,7 @@ void *receiving(void *ServerPort) // server
 
     struct timeval timeout;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 100;
+    timeout.tv_usec = 10;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
     {
@@ -309,34 +342,24 @@ void *receiving(void *ServerPort) // server
 
     int len, n;
     len = sizeof(cliaddr);
-    // printf("Listening.. \n");
-    // n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (struct sockaddr*) &cliaddr, &len);
-    // printf("Message received..\n");
-    // buffer[n] = '\0';
-    // printf("client: %s\n", buffer);
 
     // printf("WANT LOCK AT Rec\n");
-    while (EXITCODE != true)
+    while (EXITCODE == false)
     {
         // printf("LOCKED at Rec\n");
 
         sem_wait(&mutexRec);
         n = recvfrom(sockfd, (char *)buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&cliaddr, &len);
         // printf("Receiving message\n");
+        fflush(stdout);
         buffer[n] = '\0';
         buffer[n - 1] = '\0';
 
-        if (EXITCODE == true)
-        {
-            sem_post(&mutexRec);
-            break;
-        }
         if (strcmp(buffer, "\0") == 0)
         {
             sem_post(&mutexRec);
             continue;
         }
-
 
         // printf("%s|\n", buffer);
         if (strcmp(buffer, "11-11") == 0)
@@ -346,31 +369,31 @@ void *receiving(void *ServerPort) // server
         }
         else if (strcmp(buffer, "10-10") == 0)
         {
-            status = false;
-            // printf("iscode\n");
+
+            // printf("%s\n", buffer);
+
+            // printf("Received Exit\n");
+            EXITCODE = true;
         }
 
         else
         {
+            // printf("%s\n", buffer);
             // printf("Not code\n");
             storeMsg(buffer);
             buffer[0] = '\0';
         }
 
-        // printf("UNLOCKING at REC\n");
-        // int val;
-        // sem_getvalue(&mutexRec, &val);
-        // printf("%d\n", val);
-        // printf("UNLOCKED at REC\n");
-
         sem_post(&mutexRec);
 
-        // sem_getvalue(&mutexRec, &val);
-        // printf("%d\n", val);
         sleep(1);
     }
-    printf("Exiting Receiving\n");
+    // printf("Exiting Receiving\n");
+    sem_post(&mutexSend);
+    sem_post(&mutexRec);
+    pthread_cancel(keyboard);
 
+    // sleep(40);
     return 0;
 }
 
@@ -379,7 +402,6 @@ int main(int argc, char const *argv[])
     sem_init(&mutexSend, 0, 1);
     sem_init(&mutexRec, 0, 1);
 
-    pthread_t sender, recieve, keyboard, printer;
     int myPort, theirPort, arg3, arg4;
 
     IncommingMSGs = List_create();
@@ -405,13 +427,13 @@ int main(int argc, char const *argv[])
 
     // printf("Server Port: %d\n", arg1); // server will recieve
     //printf("Client Port: %d\n", arg2); // client will send
-    printf("Talk program started\n");
+    printf("Welcome to Lets-Talk! Please type your messages now\n");
     if (pthread_create(&keyboard, NULL, input, (void *)&arg3) == 0)
     {
         // printf("Created keyboard thread\n");
     }
 
-    if (pthread_create(&recieve, NULL, receiving, (void *)&myPort) == 0)
+    if (pthread_create(&receive, NULL, receiving, (void *)&myPort) == 0)
     {
         // printf("Created receive thread\n");
     }
@@ -427,12 +449,12 @@ int main(int argc, char const *argv[])
 
     pthread_join(sender, NULL);
     pthread_join(keyboard, NULL);
-    pthread_join(recieve, NULL);
     pthread_join(printer, NULL);
+    pthread_join(receive, NULL);
 
     sem_destroy(&mutexSend);
     sem_destroy(&mutexRec);
 
-    printf("Exit\n");
+    // printf("Exit\n");
     return 0;
 }

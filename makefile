@@ -1,14 +1,14 @@
-CFLAGS = -pthread -o talk
+CFLAGS = -pthread -o lets-talk
 
-default: talk 
-	gcc -g -o talk talk.c list.c -pthread 
+default: lets-talk 
+	gcc -g -o lets-talk lets-talk.c list.c -pthread 
 
 
-talk: talk.o list.o
-	gcc -g $(CFLAGS) talk.o list.o 
+lets-talk: lets-talk.o list.o
+	gcc -g $(CFLAGS) lets-talk.o list.o 
 
-talk.o: talk.c 
-	gcc -g -c talk.c
+lets-talk.o: lets-talk.c 
+	gcc -g -c lets-talk.c
 
 list.o: list.c
 	gcc -g -c list.c
@@ -17,10 +17,11 @@ list.o: list.c
 hello: client.c
 	gcc -o client client.c
 
-
+val: lets-talk
+	valgrind --leak-check=full ./lets-talk 8000 localhost 8001
 
 
 
 clean:
-	-rm talk
+	-rm lets-talk
 	-rm *.o
