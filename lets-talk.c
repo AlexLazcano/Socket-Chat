@@ -125,7 +125,7 @@ void *input(void *ptr)
         // printf("%s", lineBuffer);
         if (strcmp(lineBuffer, "!exit\n") == 0)
         {
-            printf("Pressed exit\n");
+            // printf("Pressed exit\n");
             EXITCODE = true;
 
             break;
